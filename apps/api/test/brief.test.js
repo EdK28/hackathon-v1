@@ -222,6 +222,89 @@ describe('Claude engine request/response (against a fake API server)', () => {
   });
 });
 
+describe('free/open model engine (OpenAI-compatible, e.g. Ollama or Groq)', () => {
+  /** Fake OpenAI-compatible server. `schemaOk` = whether it accepts response_format json_schema. */
+  async function fakeLlm({ schemaOk }) {
+    const http = await import('node:http');
+    const seen = [];
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const json = JSON.parse(body);
+        seen.push({ path: req.url, auth: req.headers.authorization, json });
+        if (json.response_format?.type === 'json_schema' && !schemaOk) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          return res.end(JSON.stringify({ error: { message: "response_format 'json_schema' is not supported by this model" } }));
+        }
+        // A small model's typical reply: thinking, a code fence, and some fields left out
+        const payload = {
+          reply: 'Hi Mr Tan!',
+          question: { text: 'Who mainly uses the site?', options: ['Retail customers', 'Dealers'], multi: true },
+          fields: { goal: 'More online orders' },
+          done: false,
+        };
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({
+          id: 'c1', object: 'chat.completion', model: json.model,
+          choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: `<think>plan the question</think>\n\`\`\`json\n${JSON.stringify(payload)}\n\`\`\`` } }],
+        }));
+      });
+    });
+    await new Promise((r) => server.listen(0, r));
+    return { server, seen, url: `http://127.0.0.1:${server.address().port}/v1` };
+  }
+
+  async function withLlm(opts, fn) {
+    const fake = await fakeLlm(opts);
+    const saved = { ...config.ai, llm: { ...config.ai.llm } };
+    config.ai.engine = 'auto';
+    config.ai.apiKey = ''; // no Claude key: auto should pick the free model
+    config.ai.llm = { baseUrl: fake.url, apiKey: 'free-key', model: `test-model-${opts.schemaOk ? 'a' : 'b'}`, timeoutMs: 5000 };
+    try {
+      await fn(fake);
+    } finally {
+      Object.assign(config.ai, saved);
+      fake.server.close();
+    }
+  }
+
+  test('auto mode uses it when LLM_BASE_URL is set, with strict JSON schema output', async () => {
+    await withLlm({ schemaOk: true }, async ({ seen }) => {
+      const p = await create(await devAgent());
+      assert.equal(p.engine, 'llm: test-model-a');
+      assert.equal(p.messages[0].question.text, 'Who mainly uses the site?');
+      assert.equal(p.brief.fields.goal, 'More online orders');
+      assert.equal(seen[0].path, '/v1/chat/completions');
+      assert.equal(seen[0].auth, 'Bearer free-key');
+      assert.equal(seen[0].json.response_format.type, 'json_schema');
+    });
+  });
+
+  test('models without JSON-schema support fall back to JSON mode, and gaps are filled in', async () => {
+    await withLlm({ schemaOk: false }, async ({ seen }) => {
+      const p = await create(await devAgent());
+      assert.equal(p.engine, 'llm: test-model-b', 'should not fall back to offline');
+      assert.equal(p.messages[0].question.text, 'Who mainly uses the site?');
+      assert.deepEqual(seen.map((s) => s.json.response_format.type), ['json_schema', 'json_object']);
+      assert.match(seen[1].json.messages[0].content, /matches this JSON schema/);
+    });
+  });
+
+  test('if the free model is unreachable, the client still gets a question (offline fallback)', async () => {
+    const saved = { ...config.ai, llm: { ...config.ai.llm } };
+    config.ai.engine = 'llm';
+    config.ai.llm = { baseUrl: 'http://127.0.0.1:9/v1', apiKey: '', model: 'llama3.2', timeoutMs: 2000 };
+    try {
+      const p = await create(await devAgent());
+      assert.equal(p.engine, 'offline');
+      assert.ok(p.messages[0].question.text);
+    } finally {
+      Object.assign(config.ai, saved);
+    }
+  });
+});
+
 describe('wireframe', () => {
   test('a finished interview produces a wireframe tied to what the client said', async () => {
     const dev = await devAgent();

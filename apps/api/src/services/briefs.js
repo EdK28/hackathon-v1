@@ -4,6 +4,7 @@ import { Project } from '../models/index.js';
 import { badRequest, conflict } from '../utils/errors.js';
 import { claudeEngine } from './engine-claude.js';
 import { offlineEngine } from './engine-offline.js';
+import { openaiEngine } from './engine-openai.js';
 import { getTemplate } from './templates.js';
 import { wireframeOutline } from './wireframe.js';
 
@@ -11,6 +12,7 @@ export function pickEngine() {
   const mode = config.ai.engine;
   if (mode === 'offline') return offlineEngine;
   if (mode === 'claude' || (mode === 'auto' && config.ai.apiKey)) return claudeEngine;
+  if (mode === 'llm' || mode === 'openai' || (mode === 'auto' && config.ai.llm.baseUrl)) return openaiEngine;
   return offlineEngine;
 }
 
@@ -18,10 +20,15 @@ export function pickEngine() {
 async function run(method, args) {
   const engine = pickEngine();
   try {
-    return { result: await engine[method](args), engine: engine.name };
+    const result = await engine[method](args);
+    // Smaller models sometimes forget the next question: don't leave the client stuck
+    if ((method === 'start' || method === 'turn') && !result.done && !result.question?.text?.trim()) {
+      throw new Error('the model did not ask a next question');
+    }
+    return { result, engine: engine.name };
   } catch (err) {
     if (engine === offlineEngine) throw err;
-    console.error(`[ai] Claude ${method} failed, using offline engine:`, err.message);
+    console.error(`[ai] ${engine.name} ${method} failed, using offline engine:`, err.message);
     return { result: await offlineEngine[method](args), engine: 'offline' };
   }
 }

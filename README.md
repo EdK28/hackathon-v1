@@ -22,14 +22,21 @@ Clients often say things like *"make the homepage more modern and user friendly,
 
 ## AI engines
 
-| Engine | When | Notes |
-| --- | --- | --- |
-| **Claude** | `ANTHROPIC_API_KEY` set | Each turn returns JSON guaranteed to match a schema ([Structured Outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), `output_config.format`). Writes natural follow-ups, user stories and risks. Model set by `ANTHROPIC_MODEL`. |
-| **Offline** | No key (default) | Rule-based: same checklist, vague-word follow-ups, contradiction rules. Free and predictable, which makes it good for demos and tests, but its wording is formulaic. |
+Clarify picks an engine automatically (`AI_ENGINE=auto`), in this order:
 
-If a Claude call fails, that turn falls back to the offline engine automatically, so the client is never stuck.
+1. **Claude** if `ANTHROPIC_API_KEY` is set (best quality; Haiku costs a few cents per brief).
+2. **A free/open model** if `LLM_BASE_URL` is set. Works with any OpenAI-compatible API:
 
-> The Claude path is tested against a fake API server (request shape and response handling), not yet against the live API. Run one real interview with your own key before relying on it.
+   | Option | Cost | Settings (in `apps/api/.env`) |
+   | --- | --- | --- |
+   | **Ollama** (runs on your own PC) | Free, no key, private | `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=qwen3:8b` |
+   | **Groq** | Free tier with daily limits | `LLM_BASE_URL=https://api.groq.com/openai/v1`, `LLM_MODEL=llama-3.3-70b-versatile`, `LLM_API_KEY=…` |
+   | **OpenRouter** | `:free` models with daily limits | `LLM_BASE_URL=https://openrouter.ai/api/v1`, `LLM_MODEL=meta-llama/llama-3.3-70b-instruct:free`, `LLM_API_KEY=…` |
+
+   It asks for strict JSON-schema output, and switches to plain JSON mode automatically for models that don't support that. Missing fields from smaller models are filled in.
+3. **Offline rules** otherwise: free, instant, no AI.
+
+Whatever is chosen, if a call fails (no credit, model not running, bad JSON) that step falls back to the offline rules, so the client's chat never gets stuck. The project page shows which engine answered ("assistant: …"). Set `AI_ENGINE=claude`, `llm` or `offline` to force one.
 
 ## Quick start
 

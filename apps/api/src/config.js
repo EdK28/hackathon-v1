@@ -8,10 +8,18 @@ export const config = {
   cookieSecure: env.COOKIE_SECURE === 'true',
 
   ai: {
-    // 'auto' uses Claude when ANTHROPIC_API_KEY is set, otherwise the offline engine.
-    engine: env.AI_ENGINE || 'auto', // 'auto' | 'claude' | 'offline'
+    // 'auto' uses Claude when ANTHROPIC_API_KEY is set, else a free/open model when LLM_BASE_URL is set,
+    // else the offline (rule-based) engine.
+    engine: env.AI_ENGINE || 'auto', // 'auto' | 'claude' | 'llm' | 'offline'
     apiKey: env.ANTHROPIC_API_KEY || '',
     model: env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
+    // Any OpenAI-compatible API: Ollama (local, free), Groq, OpenRouter...
+    llm: {
+      baseUrl: env.LLM_BASE_URL || '',
+      apiKey: env.LLM_API_KEY || '',
+      model: env.LLM_MODEL || '',
+      timeoutMs: Number(env.LLM_TIMEOUT_MS || 180_000), // local models can be slow on the first call
+    },
   },
 };
 

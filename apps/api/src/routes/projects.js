@@ -59,7 +59,7 @@ async function own(req) {
 router.get('/meta', (_req, res) => {
   res.json({
     engine: pickEngine().name,
-    model: pickEngine().name === 'claude' ? config.ai.model : null,
+    model: pickEngine().name === 'claude' ? config.ai.model : pickEngine().name.startsWith('llm') ? config.ai.llm.model : null,
     templates: Object.values(TEMPLATES).map((t) => ({ id: t.id, name: t.name, fields: t.fields.map((f) => f.label) })),
   });
 });

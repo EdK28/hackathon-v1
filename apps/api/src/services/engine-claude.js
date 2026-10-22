@@ -121,7 +121,7 @@ function transcript(messages) {
     .join('\n');
 }
 
-async function callJson({ system, user, schema, maxTokens = 2000 }) {
+async function claudeCallJson({ system, user, schema, maxTokens = 2000 }) {
   const res = await anthropic().messages.create({
     model: config.ai.model,
     max_tokens: maxTokens,
@@ -135,8 +135,14 @@ async function callJson({ system, user, schema, maxTokens = 2000 }) {
   return JSON.parse(block.text);
 }
 
-export const claudeEngine = {
-  name: 'claude',
+/**
+ * The interview logic is the same for every AI provider; only `callJson` differs
+ * (Claude here, OpenAI-compatible providers such as Ollama/Groq in engine-openai.js).
+ * callJson({ system, user, schema, maxTokens }) must resolve to an object matching `schema`.
+ */
+export function makeEngine(name, callJson) {
+  return {
+  name,
 
   async start({ template, clientName, developerName, initialRequest, messages = [] }) {
     const out = await callJson({
@@ -218,3 +224,6 @@ Client's change request: """${request}"""`,
     return { applied: !!out.applied, reply: out.reply || '', wireframe: out.applied ? cleanWireframe(out.wireframe) : brief.wireframe };
   },
 };
+}
+
+export const claudeEngine = makeEngine('claude', claudeCallJson);

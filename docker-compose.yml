@@ -34,6 +34,13 @@ services:
       AI_ENGINE: ${AI_ENGINE:-auto}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-180000}
+    # lets the container reach Ollama running on your PC (host.docker.internal)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
         condition: service_healthy
