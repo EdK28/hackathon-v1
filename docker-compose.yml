@@ -1,0 +1,56 @@
+# Run everything:   docker compose up --build
+# Then open:        http://localhost:3100
+# Demo data:        docker compose exec api node src/seed/seed.js
+# Settings come from the .env file next to this one (copy .env.example).
+
+services:
+  mongo:
+    image: mongo:8.0
+    # A single-node replica set: Clarify uses transactions, which need one
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Starts the replica set the first time, then just reports it's up
+      test: >-
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PORT: 4100
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/clarify?replicaSet=rs0}
+      MONGO_DNS_SERVERS: ${MONGO_DNS_SERVERS:-}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      WEB_URL: ${WEB_URL:-http://localhost:3100}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AI_ENGINE: ${AI_ENGINE:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:4100
+    ports:
+      - "${WEB_PORT:-3100}:3100"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
